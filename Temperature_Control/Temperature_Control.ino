@@ -13,7 +13,7 @@ float temperature;
 float temperature_set; //changes depending on mode
 float error;
 float prev_error = 0;
-float elapsedTime, currTime
+float elapsedTime, currTime;
 float prevTime = 0;
 float cumError, rateError;
 int PID_value;
@@ -55,16 +55,16 @@ float getTemp() {
 float PID_control(float temperature) {
   //Calculate time
   currTime = millis();
-  elapsedTime = currTime - prevTime
+  elapsedTime = currTime - prevTime;
 
   //Calculate error
-  error = set_temperature - temperature;
+  error = temperature_set - temperature;
 
   cumError += error * elapsedTime; //integral
   rateError = (error - prev_error)/elapsedTime; //derivative
 
   //Calculate P,I,D values
-  PID_p = kp * PID_error;
+  PID_p = kp * error;
   PID_i = ki * cumError;
   PID_d = kd * rateError;
 
@@ -77,7 +77,7 @@ float PID_control(float temperature) {
   return  PID_value;
 }
 
-void pmw_output(float PID_value) {
+void pwm_output(float PID_value) {
   // PWM output range is defined between 0 and 255
   if (PID_value < 0) {
     PID_value = 0;
@@ -96,14 +96,14 @@ void loop() {
 
   // Code to get mode
   //if low
-  temperature_set = low_mode
+  temperature_set = low_mode;
   //else if medium
-  //temperature_set = low_mode
+  //temperature_set = low_mode;
   //else
-  //temperature_set = high_mode
+  //temperature_set = high_mode;
   
   temperature = getTemp();
-  PID_value = PID_Control(temperature);
+  PID_value = PID_control(temperature);
 
   pwm_output(PID_value);
   delay(500);
