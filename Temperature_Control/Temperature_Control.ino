@@ -8,6 +8,11 @@ float c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;
 //Pin defines
 int PWM_pin = 3; //output PWM pin to vary DC voltage
 
+//Temperature control buttons pin defines (temporary)
+int low_button = 0;
+int med_button = 1;
+int high_button = 2;
+
 //PID Variables
 float temperature;
 float temperature_set; //changes depending on mode
@@ -29,11 +34,23 @@ int ki = 0.1;
 int kd = 0.1;
 
 //Constants
+int low_status = 0;
+int med_status = 0;
+int high_status = 0;
+
 float low_mode = 44.4;
 float medium_mode = 51.71;
 float high_mode = 58.52;
 
 void setup() {
+  //Set up PWM output pin (for heating element)
+  pinMode(PWM_pin, OUTPUT);
+
+  //Set up digital I/O input pin for buttons
+  pinMode(low_button, INPUT);
+  pinMode(medium_button, INPUT);
+  pinMode(high_button, INPUT);
+  
   Serial.begin(9600); //For reading temperature in Serial Monitor
   currTime = millis();
 }
@@ -52,7 +69,7 @@ float getTemp() {
   return T;
 }
 
-float PID_control(float temperature) {
+float PID_control(float temperature, float temperature_set) {
   //Calculate time
   currTime = millis();
   elapsedTime = currTime - prevTime;
@@ -93,17 +110,23 @@ void pwm_output(float PID_value) {
 }
 
 void loop() {
-
-  // Code to get mode
-  //if low
-  temperature_set = low_mode;
-  //else if medium
-  //temperature_set = low_mode;
-  //else
-  //temperature_set = high_mode;
+  // Get mode
+  low_status = digitalRead(low_button);
+  med_status = digitalRead(med_button);
+  high_status = digitalRead(high_button);
+  
+  if (low_status == HIGH) {
+    temperature_set = low_mode;
+  }
+  else if (med_status == HIGH) {
+    temperature_set = medium_mode;
+  }
+  else if (high_status == HIGH) {
+    temperature_set = high_mode;
+  }
   
   temperature = getTemp();
-  PID_value = PID_control(temperature);
+  PID_value = PID_control(temperature, temperature_set);
 
   pwm_output(PID_value);
   delay(500);
