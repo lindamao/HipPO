@@ -13,6 +13,11 @@ int low_button = 0;
 int med_button = 1;
 int high_button = 2;
 
+//Temperature mode indicator LED defines
+int low_LED = 11;
+int med_LED = 12;
+int high_LED = 13;
+
 //PID Variables
 float temperature;
 float temperature_set; //changes depending on mode
@@ -42,14 +47,28 @@ float low_mode = 44.4;
 float medium_mode = 51.71;
 float high_mode = 58.52;
 
+//Setting variables
+bool newDay = false;
+int session_count = 0;
+
+int timer1 = 0;
+int timer2 = 0;
+
+float currTemp;
+
 void setup() {
   //Set up PWM output pin (for heating element)
   pinMode(PWM_pin, OUTPUT);
 
   //Set up digital I/O input pin for buttons
   pinMode(low_button, INPUT);
-  pinMode(medium_button, INPUT);
+  pinMode(med_button, INPUT);
   pinMode(high_button, INPUT);
+
+  //Set up LED indicators for temperature modes
+  pinMode(low_LED, OUTPUT);
+  pinMode(med_LED, OUTPUT);
+  pinMode(high_LED, OUTPUT);
   
   Serial.begin(9600); //For reading temperature in Serial Monitor
   currTime = millis();
@@ -109,7 +128,15 @@ void pwm_output(float PID_value) {
   analogWrite(PWM_pin, 255-PID_value);
 }
 
-void loop() {
+void heat (float temperature_set) {
+  temperature = getTemp();
+  PID_value = PID_control(temperature, temperature_set);
+
+  pwm_output(PID_value);
+  delay(500);
+}
+
+void loop() {  
   // Get mode
   low_status = digitalRead(low_button);
   med_status = digitalRead(med_button);
@@ -117,17 +144,23 @@ void loop() {
   
   if (low_status == HIGH) {
     temperature_set = low_mode;
+    digitalWrite(low_LED, HIGH);
+    digitalWrite(med_LED, LOW);
+    digitalWrite(high_LED, LOW);
   }
   else if (med_status == HIGH) {
     temperature_set = medium_mode;
+    digitalWrite(med_LED, HIGH);
+    digitalWrite(low_LED, LOW);
+    digitalWrite(high_LED, LOW);
   }
   else if (high_status == HIGH) {
     temperature_set = high_mode;
+    digitalWrite(high_LED, HIGH);
+    digitalWrite(low_LED, LOW);
+    digitalWrite(med_LED, LOW);
   }
-  
-  temperature = getTemp();
-  PID_value = PID_control(temperature, temperature_set);
 
-  pwm_output(PID_value);
-  delay(500);
+  // Start heating controls
+  heat(temperature_set);
 }
