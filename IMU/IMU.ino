@@ -37,18 +37,6 @@ MPU6050 mpu;
  * ========================================================================= */
 
 
-
-// uncomment "OUTPUT_READABLE_QUATERNION" if you want to see the actual
-// quaternion components in a [w, x, y, z] format (not best for parsing
-// on a remote host such as Processing or something though)
-//#define OUTPUT_READABLE_QUATERNION
-
-// uncomment "OUTPUT_READABLE_EULER" if you want to see Euler angles
-// (in degrees) calculated from the quaternions coming from the FIFO.
-// Note that Euler angles suffer from gimbal lock (for more info, see
-// http://en.wikipedia.org/wiki/Gimbal_lock)
-//#define OUTPUT_READABLE_EULER
-
 // uncomment "OUTPUT_READABLE_YAWPITCHROLL" if you want to see the yaw/
 // pitch/roll angles (in degrees) calculated from the quaternions coming
 // from the FIFO. Note this also requires gravity vector calculations.
@@ -69,15 +57,6 @@ MPU6050 mpu;
 // is present in this case). Could be quite handy in some cases.
 //#define OUTPUT_READABLE_WORLDACCEL
 
-// uncomment "OUTPUT_TEAPOT" if you want output that matches the
-// format used for the InvenSense teapot demo
-//#define OUTPUT_TEAPOT
-
-
-
-#define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
-bool blinkState = false;
-
 // MPU control/status vars
 bool dmpReady = false;  // set true if DMP init was successful
 uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
@@ -95,12 +74,26 @@ VectorFloat gravity;    // [x, y, z]            gravity vector
 float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
+// Store previous IMU value
+float ypr_prev[3];
+
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
 
 // Force sensor define
-#define FORCE_SENSOR_PIN A0 // the FSR and 10K pulldown are connected to A0
+#define FORCE_SENSOR_PIN_HEEL A0 // the FSR and 10K pulldown are connected to A0
+#define FORCE_SENSOR_PIN_TOE A1 // the FSR and 10K pulldown are connected to A1
 
+// Define LED
+#define LED_PIN_HEEL 13
+#define LED_PIN_TOE 12
+bool blinkState_heel = false;
+bool blinkState_toe = false;
+
+unsigned long t;
+unsigned long t_prev;
+
+unsigned long slope;
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -188,7 +181,11 @@ void setup() {
     }
 
     // configure LED for output
-    pinMode(LED_PIN, OUTPUT);
+    pinMode(LED_PIN_HEEL, OUTPUT);
+    pinMode(LED_PIN_TOE, OUTPUT);
+
+    ypr_prev[3] = ypr[3];
+
 }
 
 
@@ -215,6 +212,8 @@ void loop() {
         // .
     }
 
+    t = millis();
+
     // reset interrupt flag and get INT_STATUS byte
     mpuInterrupt = false;
     mpuIntStatus = mpu.getIntStatus();
@@ -240,46 +239,64 @@ void loop() {
         // (this lets us immediately read more without waiting for an interrupt)
         fifoCount -= packetSize;
 
-        #ifdef OUTPUT_READABLE_QUATERNION
-            // display quaternion values in easy matrix form: w x y z
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            Serial.print("quat\t");
-            Serial.print(q.w);
-            Serial.print("\t");
-            Serial.print(q.x);
-            Serial.print("\t");
-            Serial.print(q.y);
-            Serial.print("\t");
-            Serial.println(q.z);
-        #endif
-
-        #ifdef OUTPUT_READABLE_EULER
-            // display Euler angles in degrees
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetEuler(euler, &q);
-            Serial.print("euler\t");
-            Serial.print(euler[0] * 180/M_PI);
-            Serial.print("\t");
-            Serial.print(euler[1] * 180/M_PI);
-            Serial.print("\t");
-            Serial.println(euler[2] * 180/M_PI);
-        #endif
-
         #ifdef OUTPUT_READABLE_YAWPITCHROLL
             // display Euler angles in degrees
+            ypr_prev[2] = ypr[2];
+            //t_prev = t;
+            
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            int analogReading = analogRead(FORCE_SENSOR_PIN);
+            int analogReading_heel = analogRead(FORCE_SENSOR_PIN_HEEL);
+            //int analogReading_toe = analogRead(FORCE_SENSOR_PIN_TOE);
 
-            Serial.print("yprf\t");
-            Serial.print(ypr[0] * 180/M_PI);
-            Serial.print("\t");
+            Serial.print("yprff\t");
+            //Serial.print(ypr[0] * 180/M_PI);
+            //Serial.print("\t");
             Serial.print(ypr[1] * 180/M_PI);
             Serial.print("\t");
             Serial.print(ypr[2] * 180/M_PI);
             Serial.print("\t");
-            Serial.println(analogReading); // print the raw analog reading
+            Serial.print(analogReading_heel); // print the raw analog reading
+
+            Serial.print("\t");
+            Serial.print(t); // print the raw analog reading
+            Serial.print("\t");
+            Serial.print(ypr[2]); // print the raw analog reading
+            Serial.print("\t");
+            Serial.print(t_prev); // print the raw analog reading
+            Serial.print("\t");
+            Serial.print(ypr_prev[2]); // print the raw analog reading
+
+            //ypr_prev[2] = ypr[2];
+            t_prev = t;
+
+            float num = ypr[2]-ypr_prev[2];
+            unsigned long denom = t - t_prev;
+
+            Serial.print("\t");
+            Serial.print(num); // print the raw analog reading
+            Serial.print("\t");
+            Serial.print(denom); // print the raw analog reading
+
+            slope = num/denom;
+
+            Serial.print("\t");
+            Serial.println(slope); // print the raw analog reading
+
+            if (slope == 0.01) {
+              blinkState_toe = !blinkState_toe;
+            }
+
+            if (analogReading_heel > 600) {
+              blinkState_heel = !blinkState_heel;
+            }
+
+            digitalWrite(LED_PIN_HEEL, blinkState_heel);
+            digitalWrite(LED_PIN_TOE, blinkState_toe);
+
+            blinkState_heel = false;
+            blinkState_toe = false;
         #endif
 
         #ifdef OUTPUT_READABLE_REALACCEL
@@ -311,23 +328,5 @@ void loop() {
             Serial.print("\t");
             Serial.println(aaWorld.z);
         #endif
-    
-        #ifdef OUTPUT_TEAPOT
-            // display quaternion values in InvenSense Teapot demo format:
-            teapotPacket[2] = fifoBuffer[0];
-            teapotPacket[3] = fifoBuffer[1];
-            teapotPacket[4] = fifoBuffer[4];
-            teapotPacket[5] = fifoBuffer[5];
-            teapotPacket[6] = fifoBuffer[8];
-            teapotPacket[7] = fifoBuffer[9];
-            teapotPacket[8] = fifoBuffer[12];
-            teapotPacket[9] = fifoBuffer[13];
-            Serial.write(teapotPacket, 14);
-            teapotPacket[11]++; // packetCount, loops at 0xFF on purpose
-        #endif
-
-        // blink LED to indicate activity
-        blinkState = !blinkState;
-        digitalWrite(LED_PIN, blinkState);
     }
 }
