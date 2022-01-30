@@ -1,7 +1,6 @@
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
-// Test
 
 #include "MPU6050_6Axis_MotionApps20.h"
 //#include "MPU6050.h" // not necessary if using MotionApps include file
@@ -92,9 +91,13 @@ bool blinkState_heel = false;
 bool blinkState_toe = false;
 
 unsigned long t;
+unsigned long t_cur;
 unsigned long t_prev;
 
-unsigned long slope;
+float slope;
+
+bool rising_edge = true;
+bool zero_crossing = true;
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -139,10 +142,10 @@ void setup() {
     Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
     // wait for ready
-    Serial.println(F("\nSend any character to begin DMP programming and demo: "));
-    while (Serial.available() && Serial.read()); // empty buffer
-    while (!Serial.available());                 // wait for data
-    while (Serial.available() && Serial.read()); // empty buffer again
+    //Serial.println(F("\nSend any character to begin DMP programming and demo: "));
+    //while (Serial.available() && Serial.read()); // empty buffer
+    //while (!Serial.available());                 // wait for data
+    //while (Serial.available() && Serial.read()); // empty buffer again
 
     // load and configure the DMP
     Serial.println(F("Initializing DMP..."));
@@ -185,7 +188,7 @@ void setup() {
     pinMode(LED_PIN_HEEL, OUTPUT);
     pinMode(LED_PIN_TOE, OUTPUT);
 
-    ypr_prev[3] = ypr[3];
+    ypr_prev[1] = ypr[1];
 
 }
 
@@ -212,8 +215,6 @@ void loop() {
         // .
         // .
     }
-
-    t = millis();
 
     // reset interrupt flag and get INT_STATUS byte
     mpuInterrupt = false;
@@ -242,14 +243,15 @@ void loop() {
 
         #ifdef OUTPUT_READABLE_YAWPITCHROLL
             // display Euler angles in degrees
-            ypr_prev[2] = ypr[2];
-            //t_prev = t;
+            ypr_prev[1] = ypr[1];
+            t_prev = millis();
             
             mpu.dmpGetQuaternion(&q, fifoBuffer);
             mpu.dmpGetGravity(&gravity, &q);
             mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            int analogReading_heel = analogRead(FORCE_SENSOR_PIN_HEEL);
-            //int analogReading_toe = analogRead(FORCE_SENSOR_PIN_TOE);
+            int analogReading_toe = analogRead(FORCE_SENSOR_PIN_HEEL);
+
+            t = millis();
 
             Serial.print("yprff\t");
             //Serial.print(ypr[0] * 180/M_PI);
@@ -258,39 +260,33 @@ void loop() {
             Serial.print("\t");
             Serial.print(ypr[2] * 180/M_PI);
             Serial.print("\t");
-            Serial.print(analogReading_heel); // print the raw analog reading
+            Serial.println(analogReading_toe); // print the raw analog reading
 
-            Serial.print("\t");
-            Serial.print(t); // print the raw analog reading
-            Serial.print("\t");
-            Serial.print(ypr[2]); // print the raw analog reading
-            Serial.print("\t");
-            Serial.print(t_prev); // print the raw analog reading
-            Serial.print("\t");
-            Serial.print(ypr_prev[2]); // print the raw analog reading
-
-            //ypr_prev[2] = ypr[2];
-            t_prev = t;
-
-            float num = ypr[2]-ypr_prev[2];
+            float num = ypr[1]* 180/M_PI-ypr_prev[1]* 180/M_PI;
             unsigned long denom = t - t_prev;
 
-            Serial.print("\t");
-            Serial.print(num); // print the raw analog reading
-            Serial.print("\t");
-            Serial.print(denom); // print the raw analog reading
-
             slope = num/denom;
+            slope = num/(float(denom)/1000);
 
-            Serial.print("\t");
-            Serial.println(slope); // print the raw analog reading
+            //Serial.print("\t");
+            //Serial.println(slope); // print the raw analog reading
+//
+//            if (ypr[1]*180/M_PI > 10 && slope >= -50 && zero_crossing == true ) {
+//              blinkState_heel = !blinkState_heel;
+//              zero_crossing = !zero_crossing;
+//            }
+//
+//            if (slope <= -50) {
+//              zero_crossing = !zero_crossing;
+//            }
 
-            if (slope == 0.01) {
-              blinkState_toe = !blinkState_toe;
+
+            if (ypr[1]*180/M_PI > 10) {
+              blinkState_heel = !blinkState_heel;
             }
 
-            if (analogReading_heel > 600) {
-              blinkState_heel = !blinkState_heel;
+            if (analogReading_toe > 700) {
+              blinkState_toe = !blinkState_toe;
             }
 
             digitalWrite(LED_PIN_HEEL, blinkState_heel);
@@ -298,36 +294,6 @@ void loop() {
 
             blinkState_heel = false;
             blinkState_toe = false;
-        #endif
-
-        #ifdef OUTPUT_READABLE_REALACCEL
-            // display real acceleration, adjusted to remove gravity
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-            Serial.print("areal\t");
-            Serial.print(aaReal.x);
-            Serial.print("\t");
-            Serial.print(aaReal.y);
-            Serial.print("\t");
-            Serial.println(aaReal.z);
-        #endif
-
-        #ifdef OUTPUT_READABLE_WORLDACCEL
-            // display initial world-frame acceleration, adjusted to remove gravity
-            // and rotated based on known orientation from quaternion
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetAccel(&aa, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-            mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
-            Serial.print("aworld\t");
-            Serial.print(aaWorld.x);
-            Serial.print("\t");
-            Serial.print(aaWorld.y);
-            Serial.print("\t");
-            Serial.println(aaWorld.z);
         #endif
     }
 }
