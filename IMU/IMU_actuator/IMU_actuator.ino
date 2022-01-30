@@ -44,19 +44,6 @@ MPU6050 mpu;
 // more info, see: http://en.wikipedia.org/wiki/Gimbal_lock)
 #define OUTPUT_READABLE_YAWPITCHROLL
 
-// uncomment "OUTPUT_READABLE_REALACCEL" if you want to see acceleration
-// components with gravity removed. This acceleration reference frame is
-// not compensated for orientation, so +X is always +X according to the
-// sensor, just without the effects of gravity. If you want acceleration
-// compensated for orientation, us OUTPUT_READABLE_WORLDACCEL instead.
-//#define OUTPUT_READABLE_REALACCEL
-
-// uncomment "OUTPUT_READABLE_WORLDACCEL" if you want to see acceleration
-// components with gravity removed and adjusted for the world frame of
-// reference (yaw is relative to initial orientation, since no magnetometer
-// is present in this case). Could be quite handy in some cases.
-//#define OUTPUT_READABLE_WORLDACCEL
-
 // MPU control/status vars
 bool dmpReady = false;  // set true if DMP init was successful
 uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
@@ -90,6 +77,7 @@ uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\
 bool blinkState_heel = false;
 bool blinkState_toe = false;
 
+// Define slope variables
 unsigned long t;
 unsigned long t_cur;
 unsigned long t_prev;
@@ -98,6 +86,16 @@ float slope;
 
 bool rising_edge = true;
 bool zero_crossing = true;
+
+// Motor shield #1
+// PWM is connected to pin 3.
+const int pinPwm_1 = 3;
+
+// DIR is connected to pin 4.
+const int pinDir_1 = 4;
+
+// Speed of the motor.
+static int iSpeed_1 = 0;
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -190,6 +188,10 @@ void setup() {
 
     ypr_prev[1] = ypr[1];
 
+    // Initialize the PWM and DIR pins as digital outputs.
+    pinMode(pinPwm_1, OUTPUT);
+    pinMode(pinDir_1, OUTPUT);
+
 }
 
 
@@ -205,15 +207,6 @@ void loop() {
     // wait for MPU interrupt or extra packet(s) available
     while (!mpuInterrupt && fifoCount < packetSize) {
         // other program behavior stuff here
-        // .
-        // .
-        // .
-        // if you are really paranoid you can frequently test in between other
-        // stuff to see if mpuInterrupt is true, and if so, "break;" from the
-        // while() loop to immediately process the MPU data
-        // .
-        // .
-        // .
     }
 
     // reset interrupt flag and get INT_STATUS byte
@@ -280,15 +273,26 @@ void loop() {
 //              zero_crossing = !zero_crossing;
 //            }
 
-
+            // Heel strike
             if (ypr[1]*180/M_PI > 10) {
               blinkState_heel = !blinkState_heel;
               digitalWrite(LED_PIN_HEEL, blinkState_heel);
+              
+              iSpeed_1 = 255;
+              analogWrite(pinPwm_1, iSpeed_1);
+              digitalWrite(pinDir_1, LOW);
+              delay(1000);
             }
 
+            // Toe off
             if (analogReading_toe > 700) {
               blinkState_toe = !blinkState_toe;
               digitalWrite(LED_PIN_TOE, blinkState_toe);
+              
+              iSpeed_1 = 255;
+              analogWrite(pinPwm_1, iSpeed_1);
+              digitalWrite(pinDir_1, HIGH);
+              delay(1000);
             }
 
             digitalWrite(LED_PIN_HEEL, blinkState_heel);
@@ -296,6 +300,7 @@ void loop() {
 
             blinkState_heel = false;
             blinkState_toe = false;
+        
         #endif
     }
 }
