@@ -111,8 +111,7 @@ int sensorPin_2 = A3;
  *******************************************************************************/
 
 // Speed of the motor.
-int Speed_1 = 245;
-int Speed_2 = 255;
+int Speed = 255;
 
 int sensorVal_1;
 int sensorVal_2;
@@ -239,114 +238,89 @@ void setup() {
 // ===                    MAIN PROGRAM LOOP                     ===
 // ================================================================
 
+// The loop routine runs over and over again forever.
 void loop() {
-    // if programming failed, don't try to do anything
-    if (!dmpReady) return;
+  Serial.println("Extending...");
+  sensorVal_1 = analogRead(sensorPin_1);
+  while(sensorVal_1 < maxAnalogReading){
+    driveActuator_1(1, Speed);
+    displayOutput();  
+    delay(20);
+  }
+  driveActuator_1(0, Speed);
+  delay(1000);
 
-    // wait for MPU interrupt or extra packet(s) available
-    while (!mpuInterrupt && fifoCount < packetSize) {
-        // other program behavior stuff here
-    }
+  Serial.println("Extending...");
+  sensorVal_2 = analogRead(sensorPin_2);
+  while(sensorVal_2 < maxAnalogReading){
+    driveActuator_2(1, Speed);
+    displayOutput();  
+    delay(20);
+  }
+  driveActuator_2(0, Speed);
+  delay(1000);
+  
+  Serial.println("Retracting...");
+  sensorVal_1 = analogRead(sensorPin_1);
+  while(sensorVal_1 > minAnalogReading){
+    driveActuator_1(-1, Speed);
+    displayOutput();  
+    delay(20);
+  }
+  driveActuator_1(0, Speed);
+  delay(1000);
 
-    // reset interrupt flag and get INT_STATUS byte
-    mpuInterrupt = false;
-    mpuIntStatus = mpu.getIntStatus();
+  Serial.println("Retracting...");
+  sensorVal_2 = analogRead(sensorPin_2);
+  while(sensorVal_2 > minAnalogReading){
+    driveActuator_2(-1, Speed);
+    displayOutput();  
+    delay(20);
+  }
+  driveActuator_2(0, Speed);
+  delay(1000);
 
-    // get current FIFO count
-    fifoCount = mpu.getFIFOCount();
+  Serial.println("Extending to 0.5 inches");
+  req_analogVal = mapLength2Analog(0.5, float(minAnalogReading), float(maxAnalogReading), 0.0, strokeLength);
+  sensorVal_1 = analogRead(sensorPin_1);
+  while(sensorVal_1 < req_analogVal){
+    driveActuator_1(1, Speed);
+    displayOutput();  
+    delay(20);
+  }
+  driveActuator_1(0, Speed);
+  delay(1000);
 
-    // check for overflow (this should never happen unless our code is too inefficient)
-    if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
-        // reset so we can continue cleanly
-        mpu.resetFIFO();
-        Serial.println(F("FIFO overflow!"));
+  Serial.println("Extending to 0.5 inches");
+  //req_analogVal = mapLength2Analog(0.5, float(minAnalogReading), float(maxAnalogReading), 0.0, strokeLength);
+  sensorVal_2 = analogRead(sensorPin_2);
+  while(sensorVal_2 < req_analogVal){
+    driveActuator_2(1, Speed);
+    displayOutput();  
+    delay(20);
+  }
+  driveActuator_2(0, Speed);
+  delay(1000);
 
-    // otherwise, check for DMP data ready interrupt (this should happen frequently)
-    } else if (mpuIntStatus & 0x02) {
-        // wait for correct available data length, should be a VERY short wait
-        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+  Serial.println("Retracting...");
+  sensorVal_1 = analogRead(sensorPin_1);
+  while(sensorVal_1 > minAnalogReading){
+    driveActuator_1(-1, Speed);
+    displayOutput();  
+    delay(20);
+  }
+  driveActuator_1(0, Speed);
+  delay(1000);
 
-        // read a packet from FIFO
-        mpu.getFIFOBytes(fifoBuffer, packetSize);
-        
-        // track FIFO count here in case there is > 1 packet available
-        // (this lets us immediately read more without waiting for an interrupt)
-        fifoCount -= packetSize;
-
-        #ifdef OUTPUT_READABLE_YAWPITCHROLL
-            // display Euler angles in degrees
-            ypr_prev[1] = ypr[1];
-            t_prev = millis();
-            
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            mpu.dmpGetGravity(&gravity, &q);
-            mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-            int analogReading_toe = analogRead(FORCE_SENSOR_PIN_HEEL);
-
-            t = millis();
-
-            Serial.print("yprff\t");
-            //Serial.print(ypr[0] * 180/M_PI);
-            //Serial.print("\t");
-            Serial.print(ypr[1] * 180/M_PI);
-            Serial.print("\t");
-            Serial.print(ypr[2] * 180/M_PI);
-            Serial.print("\t");
-            Serial.println(analogReading_toe); // print the raw analog reading
-
-            float num = ypr[1]* 180/M_PI-ypr_prev[1]* 180/M_PI;
-            unsigned long denom = t - t_prev;
-
-            slope = num/denom;
-            slope = num/(float(denom)/1000);
-
-            // Heel strike
-            if (ypr[1]*180/M_PI > 10) {
-              blinkState_heel = !blinkState_heel;
-              digitalWrite(LED_PIN_HEEL, blinkState_heel);
-              
-              //Serial.println("Retracting...");
-
-              sensorVal_1 = analogRead(sensorPin_1);
-              
-              Serial.println("Retracting to 1");
-              req_analogVal = mapLength2Analog(1, float(minAnalogReading), float(maxAnalogReading), 0.0, strokeLength);
-              sensorVal_1 = analogRead(sensorPin_1);
-              while(sensorVal_1 > req_analogVal){
-                driveActuator_1(-1, Speed_1);
-                displayOutput();  
-                delay(20);
-              }
-              driveActuator_1(0, Speed_1);
-              delay(2000);
-            }
-
-            // Toe off
-            if (analogReading_toe > 600) {
-              blinkState_toe = !blinkState_toe;
-              digitalWrite(LED_PIN_TOE, blinkState_toe);
-
-              // Serial.println("Extending to 2 inches");
-              req_analogVal = mapLength2Analog(2, float(minAnalogReading), float(maxAnalogReading), 0.0, strokeLength);
-              
-              sensorVal_1 = analogRead(sensorPin_1);
-              
-              while(sensorVal_1 < req_analogVal){
-                driveActuator_1(1, Speed_1);
-                displayOutput();  
-                delay(20);
-              }
-              driveActuator_1(0, Speed_1);
-            }
-            
-            digitalWrite(LED_PIN_HEEL, blinkState_heel);
-            digitalWrite(LED_PIN_TOE, blinkState_toe);
-
-            blinkState_heel = false;
-            blinkState_toe = false;
-        
-        #endif
-    }
+  Serial.println("Retracting...");
+  sensorVal_2 = analogRead(sensorPin_2);
+  while(sensorVal_2 > minAnalogReading){
+    driveActuator_2(-1, Speed);
+    displayOutput();  
+    delay(20);
+  }
+  driveActuator_2(0, Speed);
+  delay(1000);
 }
 
 float mapfloat(float x, float inputMin, float inputMax, float outputMin, float outputMax){
@@ -360,12 +334,19 @@ float mapLength2Analog (float y, float inputMin, float inputMax, float outputMin
 void displayOutput(){
   sensorVal_1 = analogRead(sensorPin_1);
   extensionLength_1 = mapfloat(sensorVal_1, float(minAnalogReading), float(maxAnalogReading), 0.0, strokeLength);
+  Serial.print("Analog Reading 1: ");
+  Serial.print(sensorVal_1);
+  Serial.print("\tActuator extension length 1: ");
+  Serial.print(extensionLength_1);
+  Serial.println(" inches");
 
-//  Serial.print("Analog Reading: ");
-//  Serial.print(sensorVal_1);
-//  Serial.print("\tActuator extension length: ");
-//  Serial.print(extensionLength_1);
-//  Serial.println(" inches");  
+  sensorVal_2 = analogRead(sensorPin_2);
+  extensionLength_2 = mapfloat(sensorVal_2, float(minAnalogReading), float(maxAnalogReading), 0.0, strokeLength);
+  Serial.print("Analog Reading 2: ");
+  Serial.print(sensorVal_2);
+  Serial.print("\tActuator extension length 2: ");
+  Serial.print(extensionLength_2);
+  Serial.println(" inches");  
 }
 
 // Wrapper function to drive actuation
